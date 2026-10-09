@@ -2,7 +2,7 @@
 
 A fully self-contained REST API built with **Node.js / Express** and **SQLite** (`better-sqlite3`). Clone it, install, and run — no external database or cloud service required.
 
-Covers four domains: **Products**, **Cart**, **Orders**, and **Auth (JWT)**.
+Covers five domains: **Auth (JWT)**, **Users**, **Products**, **Cart**, and **Orders**.
 
 ---
 
@@ -98,6 +98,43 @@ This API uses a **JWT access + refresh token** pair.
 
 ---
 
+### Users  `/users`
+
+All user endpoints require an **admin** token.
+
+| Method | Path          | Description                                      |
+|--------|---------------|--------------------------------------------------|
+| GET    | /users        | List all users (filterable, paginated)           |
+| GET    | /users/:id    | Get a single user                                |
+| POST   | /users        | Create a user (admin can assign role directly)   |
+| PUT    | /users/:id    | Full update                                      |
+| PATCH  | /users/:id    | Partial update (e.g. promote a customer to admin)|
+| DELETE | /users/:id    | Delete a user (cannot delete your own account)   |
+
+**Query parameters for `GET /users`:**
+
+| Param  | Example           | Description                              |
+|--------|-------------------|------------------------------------------|
+| role   | `?role=admin`     | Filter by role (`customer` or `admin`)   |
+| search | `?search=alice`   | Search username, email, first or last name |
+| page   | `?page=2`         | Page number (default: 1)                 |
+| limit  | `?limit=5`        | Items per page (default: 10, max: 100)   |
+
+**POST / PUT body fields:**
+
+| Field       | Required | Notes                                  |
+|-------------|----------|----------------------------------------|
+| username    | ✅       |                                        |
+| email       | ✅       |                                        |
+| password    | ✅       | Stored as bcrypt hash — never returned |
+| first_name  | ✅       |                                        |
+| last_name   | ✅       |                                        |
+| role        | —        | `customer` (default) or `admin`        |
+
+> Passwords are never included in any response. If you pass a new `password` in PUT or PATCH it is automatically re-hashed.
+
+---
+
 ### Products  `/products`
 
 | Method | Path              | Auth          | Description                          |
@@ -170,11 +207,13 @@ All cart endpoints require a valid Bearer token (each user has one cart).
 │   │   └── validate.js         # requireFields, validateId
 │   ├── routes/
 │   │   ├── auth.js
+│   │   ├── users.js
 │   │   ├── products.js
 │   │   ├── cart.js
 │   │   └── orders.js
 │   └── controllers/
 │       ├── authController.js
+│       ├── usersController.js
 │       ├── productsController.js
 │       ├── cartController.js
 │       └── ordersController.js
@@ -376,7 +415,121 @@ curl -s -X POST http://localhost:3001/auth/logout \
 
 ---
 
-### Flow 2 — Admin: Manage Products and Orders
+### Flow 2 — Admin: Manage Users
+
+#### Step 1: Login as admin
+
+```bash
+curl -s -X POST http://localhost:3001/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "Admin1234!"}'
+```
+
+```bash
+ADMIN_TOKEN="<paste admin access_token here>"
+```
+
+---
+
+#### Step 2: List all users
+
+```bash
+# All users (paginated)
+curl -s "http://localhost:3001/users" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Filter by role
+curl -s "http://localhost:3001/users?role=customer" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Search by name or email
+curl -s "http://localhost:3001/users?search=alice" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+---
+
+#### Step 3: Get a single user
+
+```bash
+curl -s "http://localhost:3001/users/1" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+---
+
+#### Step 4: Create a new user (with role)
+
+```bash
+curl -s -X POST http://localhost:3001/users \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "eve",
+    "email": "eve@example.com",
+    "password": "Password1!",
+    "first_name": "Eve",
+    "last_name": "Taylor",
+    "role": "customer"
+  }'
+```
+
+---
+
+#### Step 5: Promote a customer to admin
+
+```bash
+curl -s -X PATCH http://localhost:3001/users/2 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "admin"}'
+```
+
+---
+
+#### Step 6: Full update a user
+
+```bash
+curl -s -X PUT http://localhost:3001/users/2 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "bob_updated",
+    "email": "bob_updated@example.com",
+    "password": "NewPassword1!",
+    "first_name": "Bob",
+    "last_name": "Smith",
+    "role": "customer"
+  }'
+```
+
+---
+
+#### Step 7: Delete a user
+
+```bash
+curl -s -X DELETE http://localhost:3001/users/2 \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+> Deleting a user cascades — their cart, orders, and refresh tokens are removed too.
+> You cannot delete your own admin account.
+
+---
+
+#### Step 8: Verify a customer token cannot access /users
+
+```bash
+CUSTOMER_TOKEN="<paste a customer access_token here>"
+
+curl -s "http://localhost:3001/users" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
+# → {"error": "Admin access required."}
+```
+
+---
+
+### Flow 3 — Admin: Manage Products and Orders
 
 #### Step 1: Login as admin
 
@@ -477,7 +630,7 @@ curl -s -X DELETE http://localhost:3001/products/17 \
 
 ---
 
-### Flow 3 — Token Rotation (Security)
+### Flow 4 — Token Rotation (Security)
 
 This shows how the refresh token rotation works to keep sessions secure.
 
