@@ -4,6 +4,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 
 import authRoutes     from './routes/auth.js';
+import usersRoutes    from './routes/users.js';
 import productsRoutes from './routes/products.js';
 import cartRoutes     from './routes/cart.js';
 import ordersRoutes   from './routes/orders.js';
@@ -22,6 +23,7 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 // Routes
 // ---------------------------------------------------------------------------
 app.use('/auth',     authRoutes);
+app.use('/users',    usersRoutes);
 app.use('/products', productsRoutes);
 app.use('/cart',     cartRoutes);
 app.use('/orders',   ordersRoutes);
