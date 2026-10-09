@@ -25,7 +25,7 @@ router.post('/login',
 );
 
 // POST /auth/refresh
-router.post('/refresh', asyncHandler(refresh));
+router.post('/refresh', refresh);
 
 // POST /auth/logout
 router.post('/logout', logout);

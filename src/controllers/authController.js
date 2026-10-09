@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import db from '../db/client.js';
 
 const SALT_ROUNDS = 10;
@@ -18,7 +19,7 @@ function signAccessToken(user) {
 
 function signRefreshToken(user) {
   return jwt.sign(
-    { id: user.id },
+    { id: user.id, jti: crypto.randomUUID() },
     process.env.JWT_REFRESH_SECRET,
     { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
   );
@@ -89,7 +90,7 @@ export function refresh(req, res) {
     return res.status(400).json({ error: 'refresh_token is required.' });
   }
 
-  // Verify signature & expiry
+  // Verify signature & expiry first (cheap check, no DB hit)
   let payload;
   try {
     payload = jwt.verify(refresh_token, process.env.JWT_REFRESH_SECRET);
@@ -97,9 +98,15 @@ export function refresh(req, res) {
     return res.status(401).json({ error: 'Invalid or expired refresh token.' });
   }
 
-  // Check it still exists in the DB (not revoked)
-  const stored = db.prepare('SELECT * FROM refresh_tokens WHERE token = ?').get(refresh_token);
-  if (!stored) {
+  // Atomically delete the token and retrieve it in one statement.
+  // If two concurrent requests race here, only one will get a row back —
+  // the other gets null and is rejected. This closes the SELECT-then-DELETE
+  // race condition that allowed token reuse.
+  const deleted = db.prepare(
+    'DELETE FROM refresh_tokens WHERE token = ? RETURNING id'
+  ).get(refresh_token);
+
+  if (!deleted) {
     return res.status(401).json({ error: 'Refresh token has been revoked.' });
   }
 
@@ -108,9 +115,7 @@ export function refresh(req, res) {
     return res.status(401).json({ error: 'User not found.' });
   }
 
-  // Rotate: delete old token, issue new pair
-  db.prepare('DELETE FROM refresh_tokens WHERE token = ?').run(refresh_token);
-
+  // Issue a new token pair
   const newAccessToken  = signAccessToken(user);
   const newRefreshToken = signRefreshToken(user);
   storeRefreshToken(user.id, newRefreshToken);
