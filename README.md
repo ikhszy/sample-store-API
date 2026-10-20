@@ -13,6 +13,12 @@ Covers five domains: **Auth (JWT)**, **Users**, **Products**, **Cart**, and **Or
 
 ---
 
+## Postman Workspace
+
+Visit this [Postman workspace](https://www.postman.com/ikhszy/workspace/sample-store-api) for usage documentation and sample of each available routes
+
+---
+
 ## Getting Started
 
 ```bash
